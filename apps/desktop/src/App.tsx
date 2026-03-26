@@ -9,6 +9,24 @@ import Settings from './pages/Settings';
 import { useConnectionStatus } from './hooks/useConnectionStatus';
 import { useWallet } from './hooks/useWallet';
 
+// Start NATS + orchestrator on app launch so the requester side works without activating the worker
+function useEnsureServices() {
+  useEffect(() => {
+    (async () => {
+      try {
+        if (window.__TAURI_INTERNALS__) {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const orchestratorUrl = localStorage.getItem('fusio_orchestrator_url') || 'http://localhost:3000';
+          const natsUrl = localStorage.getItem('fusio_nats_url') || 'nats://localhost:4222';
+          await invoke('ensure_services', { orchestratorUrl, natsUrl });
+        }
+      } catch (err) {
+        console.warn('[fusio] Failed to start services:', err);
+      }
+    })();
+  }, []);
+}
+
 function ProtocolPrimitives({ connected, hasWallet, workerCount }: { connected: boolean; hasWallet: boolean; workerCount: number }) {
   const primitives = [
     { label: 'Identity', ok: hasWallet },
@@ -33,6 +51,7 @@ function ProtocolPrimitives({ connected, hasWallet, workerCount }: { connected: 
 }
 
 function Sidebar() {
+  useEnsureServices();
   const connection = useConnectionStatus();
   const { wallet } = useWallet();
 

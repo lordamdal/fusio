@@ -228,31 +228,17 @@ fn kill_port(port: u16) {
     std::thread::sleep(std::time::Duration::from_millis(300));
 }
 
-#[tauri::command]
-pub async fn start_worker(
-    orchestrator_url: String,
-    nats_url: Option<String>,
-    local_ip: Option<String>,
-) -> Result<String, String> {
-    let node_bin = find_binary("node")
-        .ok_or("Node.js not found. Install Node.js (https://nodejs.org) and restart the app.")?;
-
-    let nats_addr = nats_url.unwrap_or_else(|| "nats://localhost:4222".to_string());
-    let nats_is_remote = is_remote_url(&nats_addr);
-    let orch_is_remote = is_remote_url(&orchestrator_url);
-    let mut messages: Vec<String> = Vec::new();
-
-    // Clear log buffer on fresh start
-    if let Ok(mut buf) = LOG_BUFFER.lock() {
-        buf.clear();
-    }
-
-    let mut guard = SERVICES.lock().map_err(|e| format!("Lock error: {}", e))?;
-    let state = guard.get_or_insert_with(|| ServiceState {
-        nats: None,
-        orchestrator: None,
-        worker: None,
-    });
+/// Start NATS + orchestrator without the worker process.
+/// Called on app startup so the requester side works immediately.
+fn ensure_nats_and_orchestrator(
+    node_bin: &PathBuf,
+    nats_addr: &str,
+    orchestrator_url: &str,
+    state: &mut ServiceState,
+    messages: &mut Vec<String>,
+) -> Result<(), String> {
+    let nats_is_remote = is_remote_url(nats_addr);
+    let orch_is_remote = is_remote_url(orchestrator_url);
 
     // --- 1. Ensure NATS is running ---
     if nats_is_remote {
@@ -295,11 +281,11 @@ pub async fn start_worker(
                 .parent()
                 .and_then(|p| p.parent())
                 .ok_or("Cannot determine orchestrator directory")?;
-            let mut child = Command::new(&node_bin)
+            let mut child = Command::new(node_bin)
                 .arg(&orch_script)
                 .current_dir(orch_dir)
                 .env("PORT", "3000")
-                .env("NATS_URL", &nats_addr)
+                .env("NATS_URL", nats_addr)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
@@ -322,6 +308,61 @@ pub async fn start_worker(
     } else {
         messages.push("Orchestrator already running".to_string());
     }
+
+    Ok(())
+}
+
+/// Start NATS + orchestrator on app launch (no worker).
+/// This allows the requester side to work without activating the worker.
+#[tauri::command]
+pub async fn ensure_services(
+    orchestrator_url: Option<String>,
+    nats_url: Option<String>,
+) -> Result<String, String> {
+    let node_bin = find_binary("node")
+        .ok_or("Node.js not found. Install Node.js (https://nodejs.org) and restart the app.")?;
+
+    let nats_addr = nats_url.unwrap_or_else(|| "nats://localhost:4222".to_string());
+    let orch_url = orchestrator_url.unwrap_or_else(|| "http://localhost:3000".to_string());
+    let mut messages: Vec<String> = Vec::new();
+
+    let mut guard = SERVICES.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let state = guard.get_or_insert_with(|| ServiceState {
+        nats: None,
+        orchestrator: None,
+        worker: None,
+    });
+
+    ensure_nats_and_orchestrator(&node_bin, &nats_addr, &orch_url, state, &mut messages)?;
+
+    Ok(messages.join("; "))
+}
+
+#[tauri::command]
+pub async fn start_worker(
+    orchestrator_url: String,
+    nats_url: Option<String>,
+    local_ip: Option<String>,
+) -> Result<String, String> {
+    let node_bin = find_binary("node")
+        .ok_or("Node.js not found. Install Node.js (https://nodejs.org) and restart the app.")?;
+
+    let nats_addr = nats_url.unwrap_or_else(|| "nats://localhost:4222".to_string());
+    let mut messages: Vec<String> = Vec::new();
+
+    // Clear log buffer on fresh start
+    if let Ok(mut buf) = LOG_BUFFER.lock() {
+        buf.clear();
+    }
+
+    let mut guard = SERVICES.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let state = guard.get_or_insert_with(|| ServiceState {
+        nats: None,
+        orchestrator: None,
+        worker: None,
+    });
+
+    ensure_nats_and_orchestrator(&node_bin, &nats_addr, &orchestrator_url, state, &mut messages)?;
 
     // --- 3. Start Worker ---
     kill_handle(&mut state.worker);
