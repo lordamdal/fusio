@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@fastify/cors": "^9.0.0",
+    "@fastify/cors": "^11.0.0",
     "@fusio/protocol-types": "file:../../packages/protocol-types",
     "dotenv": "^16.4.0",
     "fastify": "^5.8.4",
