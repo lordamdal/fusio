@@ -53,10 +53,11 @@ export function useWorkerDaemon() {
     setLoading(true);
     setError(null);
     const natsUrl = localStorage.getItem('fusio_nats_url') || 'nats://localhost:4222';
+    const localIp = localStorage.getItem('fusio_local_ip') || '';
     try {
       if (window.__TAURI_INTERNALS__) {
         const { invoke } = await import('@tauri-apps/api/core');
-        const msg = await invoke<string>('start_worker', { orchestratorUrl, natsUrl });
+        const msg = await invoke<string>('start_worker', { orchestratorUrl, natsUrl, localIp: localIp || null });
         console.log('[fusio]', msg);
       }
       // Don't set running=true manually — let the poll confirm it

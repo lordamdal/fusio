@@ -1,6 +1,7 @@
 use serde::Serialize;
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader};
+use std::net::UdpSocket;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
@@ -175,6 +176,18 @@ fn kill_handle(handle: &mut Option<ProcessHandle>) {
     *handle = None;
 }
 
+/// Auto-detect this machine's LAN IP by opening a UDP socket to a public address.
+/// No data is actually sent — we just read which local interface the OS would use.
+fn get_local_ip() -> String {
+    UdpSocket::bind("0.0.0.0:0")
+        .and_then(|socket| {
+            socket.connect("8.8.8.8:80")?;
+            socket.local_addr()
+        })
+        .map(|addr| addr.ip().to_string())
+        .unwrap_or_else(|_| "127.0.0.1".to_string())
+}
+
 fn is_port_open(port: u16) -> bool {
     std::net::TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok()
 }
@@ -202,6 +215,7 @@ fn kill_port(port: u16) {
 pub async fn start_worker(
     orchestrator_url: String,
     nats_url: Option<String>,
+    local_ip: Option<String>,
 ) -> Result<String, String> {
     let node_bin = find_binary("node")
         .ok_or("Node.js not found. Install Node.js (https://nodejs.org) and restart the app.")?;
@@ -314,7 +328,14 @@ pub async fn start_worker(
         .env("WORKER_PORT", "3001")
         .env("FUSIO_KEY_PASSPHRASE", "local-test-passphrase")
         .env("DATA_DIR", "./data")
-        .env("LOCAL_IP", "127.0.0.1")
+        .env("LOCAL_IP", {
+            let ip = local_ip.as_deref()
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .unwrap_or_else(get_local_ip);
+            push_log(format!("[worker] Local IP: {}", ip));
+            ip
+        }.as_str())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()

@@ -4,6 +4,7 @@ import { useWallet } from '../hooks/useWallet';
 export default function Settings() {
   const [orchestratorUrl, setOrchestratorUrl] = useState('http://localhost:3000');
   const [natsUrl, setNatsUrl] = useState('nats://localhost:4222');
+  const [localIp, setLocalIp] = useState('');
   const [cpuLimit, setCpuLimit] = useState(50);
   const [ramLimit, setRamLimit] = useState(50);
   const [saved, setSaved] = useState(false);
@@ -13,6 +14,7 @@ export default function Settings() {
   useEffect(() => {
     setOrchestratorUrl(localStorage.getItem('fusio_orchestrator_url') ?? 'http://localhost:3000');
     setNatsUrl(localStorage.getItem('fusio_nats_url') ?? 'nats://localhost:4222');
+    setLocalIp(localStorage.getItem('fusio_local_ip') ?? '');
     setCpuLimit(parseInt(localStorage.getItem('fusio_cpu_limit') ?? '50'));
     setRamLimit(parseInt(localStorage.getItem('fusio_ram_limit') ?? '50'));
 
@@ -33,6 +35,7 @@ export default function Settings() {
   function handleSave() {
     localStorage.setItem('fusio_orchestrator_url', orchestratorUrl);
     localStorage.setItem('fusio_nats_url', natsUrl);
+    localStorage.setItem('fusio_local_ip', localIp);
     localStorage.setItem('fusio_cpu_limit', String(cpuLimit));
     localStorage.setItem('fusio_ram_limit', String(ramLimit));
     setSaved(true);
@@ -79,6 +82,17 @@ export default function Settings() {
             onChange={(e) => setNatsUrl(e.target.value)}
             className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-50 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400"
           />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-400 mb-2">Local IP (Worker)</label>
+          <input
+            type="text"
+            value={localIp}
+            onChange={(e) => setLocalIp(e.target.value)}
+            placeholder="Auto-detect (leave empty)"
+            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-50 font-mono text-sm placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400"
+          />
+          <p className="text-xs text-slate-500 mt-1">Your LAN IP for cross-machine communication. Leave empty to auto-detect.</p>
         </div>
       </div>
 

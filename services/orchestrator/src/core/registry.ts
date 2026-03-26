@@ -23,9 +23,17 @@ export function register(workerId: string, token: string, capabilities: string[]
   return record;
 }
 
+/** 30s window — workers must have heartbeated recently to be considered available. */
+const AVAILABLE_TIMEOUT_MS = 30_000;
+
 export function getAvailable(capability: string): WorkerRecord | undefined {
+  const now = Date.now();
   for (const worker of workers.values()) {
-    if (worker.status === 'idle' && worker.capabilities.includes(capability)) {
+    if (
+      worker.status === 'idle' &&
+      worker.capabilities.includes(capability) &&
+      now - worker.lastHeartbeat < AVAILABLE_TIMEOUT_MS
+    ) {
       return worker;
     }
   }
@@ -65,6 +73,14 @@ export function updateHeartbeat(workerId: string): boolean {
 
 export function getAll(): WorkerRecord[] {
   return Array.from(workers.values());
+}
+
+/** Return only workers whose last heartbeat is within the timeout window. */
+export function getAlive(timeoutMs: number): WorkerRecord[] {
+  const now = Date.now();
+  return Array.from(workers.values()).filter(
+    (w) => w.status !== 'offline' && now - w.lastHeartbeat < timeoutMs
+  );
 }
 
 export function get(workerId: string): WorkerRecord | undefined {

@@ -131,7 +131,7 @@ export default function RequesterHome() {
       jobId,
       agentId,
       agentSignature,
-      capability: 'browser-automation',
+      capability: 'browser.full',
       estimatedMinutes: 5,
       maxPriceAgr: 1.0,
       browser: 'chromium',
