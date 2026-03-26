@@ -13,9 +13,16 @@ export function getEscrow(jobId: string): { amount: number; from: string; to: st
   return escrows.get(jobId);
 }
 
+/** Default starting balance for new accounts (testnet). */
+const DEFAULT_SEED_BALANCE = 1000;
+
 export function lockEscrow(jobId: string, from: string, to: string, amount: number): boolean {
   if (escrows.has(jobId)) {
     return false; // Double-lock rejected
+  }
+  // Auto-seed new accounts on testnet
+  if (!balances.has(from)) {
+    balances.set(from, DEFAULT_SEED_BALANCE);
   }
   const balance = getBalance(from);
   if (balance < amount) {
