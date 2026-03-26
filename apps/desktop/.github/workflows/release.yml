@@ -1,0 +1,66 @@
+name: Release Fusio
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: '--target aarch64-apple-darwin'
+            artifact: '*.dmg'
+          - platform: macos-latest
+            args: '--target x86_64-apple-darwin'
+            artifact: '*.dmg'
+          - platform: windows-latest
+            args: ''
+            artifact: '*.exe'
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: apps/desktop/package.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './apps/desktop/src-tauri -> target'
+
+      - name: Install frontend dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Fusio ${{ github.ref_name }}'
+          releaseBody: |
+            Download the right file for your system:
+            - **macOS Apple Silicon**: Fusio_${{ github.ref_name }}_aarch64.dmg
+            - **macOS Intel**: Fusio_${{ github.ref_name }}_x64.dmg
+            - **Windows**: Fusio_${{ github.ref_name }}_x64-setup.exe
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

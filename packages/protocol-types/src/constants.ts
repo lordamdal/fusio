@@ -1,0 +1,13 @@
+export const PROTOCOL_VERSION = '0.1.0-local-test';
+export const HEARTBEAT_INTERVAL_MS = 5000;
+export const HEARTBEAT_TIMEOUT_MS = 15000;
+export const MAX_STEPS_PER_JOB = 200;
+export const MAX_JOB_DURATION_MS = 30 * 60 * 1000; // 30 minutes
+export const MIN_SCREENSHOT_INTERVAL_MS = 1000;
+export const RECEIPT_LOG_PATH = './data/receipts.jsonl';
+export const KEYPAIR_DIR = './data/keys/';
+export const MOCK_AGR_ESCROW_AMOUNT = 1.0;
+export const NATS_DEFAULT_URL = 'nats://localhost:4222';
+export const ORCHESTRATOR_HTTP_PORT = 3000;
+export const WORKER_HTTP_PORT = 3001;
+export const VAULT_HTTP_PORT = 8200;

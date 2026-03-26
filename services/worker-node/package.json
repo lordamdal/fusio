@@ -1,0 +1,29 @@
+{
+  "name": "@fusio/worker-node",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node --env-file=.env dist/index.js",
+    "dev": "tsx --env-file=.env src/index.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fusio/protocol-types": "file:../../packages/protocol-types",
+    "playwright": "^1.42.0",
+    "nats": "^2.19.0",
+    "pino": "^8.19.0",
+    "fastify": "^4.26.0",
+    "dotenv": "^16.4.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^22.0.0",
+    "@types/uuid": "^9.0.7",
+    "tsx": "^4.7.0",
+    "vitest": "^1.6.0"
+  }
+}

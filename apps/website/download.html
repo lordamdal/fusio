@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Download Fusio — The Compute Network for AI Agents</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #020617;
+      color: #f8fafc;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .container { max-width: 640px; text-align: center; }
+    .logo { font-size: 3rem; font-weight: 800; margin-bottom: 0.5rem; }
+    .logo span { color: #22d3ee; }
+    .tagline { color: #94a3b8; font-size: 1.1rem; margin-bottom: 3rem; }
+    .buttons { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2rem; }
+    .btn-primary {
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.75rem;
+      padding: 1rem 2rem;
+      background: #22d3ee;
+      color: #020617;
+      font-size: 1.1rem;
+      font-weight: 700;
+      border-radius: 12px;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    .btn-primary:hover { background: #06b6d4; }
+    .btn-primary.hidden { display: none; }
+    .btn-secondary {
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+      padding: 0.75rem 1.5rem;
+      background: transparent;
+      color: #94a3b8;
+      font-size: 0.9rem;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      text-decoration: none;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .btn-secondary:hover { border-color: #22d3ee; color: #22d3ee; }
+    .version { color: #475569; font-size: 0.85rem; margin-bottom: 2rem; }
+    .requirements { color: #64748b; font-size: 0.85rem; line-height: 1.8; }
+    .requirements strong { color: #94a3b8; }
+    .footer { margin-top: 3rem; color: #334155; font-size: 0.8rem; }
+    .footer a { color: #22d3ee; text-decoration: none; }
+    @media (min-width: 480px) {
+      .buttons { flex-direction: row; justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">F<span>usio</span></div>
+    <p class="tagline">The compute network for AI agents</p>
+
+    <div class="buttons">
+      <a href="#" class="btn-primary" id="btn-mac">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 21.99 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.09997 21.99C7.78997 22.03 6.79997 20.68 5.95997 19.47C4.24997 17 2.93997 12.45 4.69997 9.39C5.56997 7.87 7.12997 6.91 8.81997 6.88C10.1 6.86 11.32 7.75 12.11 7.75C12.89 7.75 14.37 6.68 15.92 6.84C16.57 6.87 18.39 7.1 19.56 8.82C19.47 8.88 17.39 10.1 17.41 12.63C17.44 15.65 20.06 16.66 20.09 16.67C20.06 16.74 19.67 18.11 18.71 19.5ZM13 3.5C13.73 2.67 14.94 2.04 15.94 2C16.07 3.17 15.6 4.35 14.9 5.19C14.21 6.04 13.07 6.7 11.95 6.61C11.8 5.46 12.36 4.26 13 3.5Z"/></svg>
+        Download for Mac
+      </a>
+      <a href="#" class="btn-primary" id="btn-win">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3,12V6.75L9,5.43V11.91L3,12M20,3V11.75L10,11.9V5.21L20,3M3,13L9,13.09V19.9L3,18.75V13M10,13.25L20,13.25V22L10,20.09V13.25Z"/></svg>
+        Download for Windows
+      </a>
+    </div>
+
+    <div>
+      <a href="#" class="btn-secondary" id="btn-mac-intel">Intel Mac</a>
+    </div>
+
+    <p class="version" id="version-display">v0.1.0</p>
+
+    <div class="requirements">
+      <p><strong>macOS:</strong> macOS 11 (Big Sur) or later</p>
+      <p><strong>Windows:</strong> Windows 10 or later, 64-bit. Docker Desktop required for worker mode.</p>
+    </div>
+
+    <div class="footer">
+      <p>Fusio is built by Beaverhand Inc. &mdash; <a href="https://fusio.space">fusio.space</a></p>
+    </div>
+  </div>
+
+  <script>
+    // Auto-detect OS and highlight the right button
+    const platform = navigator.platform.toLowerCase();
+    const isMac = platform.includes('mac');
+    const isWin = platform.includes('win');
+
+    const btnMac = document.getElementById('btn-mac');
+    const btnWin = document.getElementById('btn-win');
+    const btnIntel = document.getElementById('btn-mac-intel');
+
+    if (isWin) {
+      btnMac.style.order = '2';
+      btnMac.style.background = 'transparent';
+      btnMac.style.border = '1px solid #334155';
+      btnMac.style.color = '#94a3b8';
+      btnIntel.style.display = 'none';
+    } else if (!isMac) {
+      // Linux — show both equally
+      btnMac.style.background = 'transparent';
+      btnMac.style.border = '1px solid #334155';
+      btnMac.style.color = '#94a3b8';
+      btnWin.style.background = 'transparent';
+      btnWin.style.border = '1px solid #334155';
+      btnWin.style.color = '#94a3b8';
+    }
+  </script>
+</body>
+</html>
