@@ -132,6 +132,18 @@ fn find_binary(name: &str) -> Option<PathBuf> {
     None
 }
 
+/// Returns true if the URL points to a non-local host.
+fn is_remote_url(url: &str) -> bool {
+    // Strip scheme (e.g. "nats://", "http://") then check host portion
+    let after_scheme = url
+        .find("://")
+        .map(|i| &url[i + 3..])
+        .unwrap_or(url);
+    let host = after_scheme.split(':').next().unwrap_or(after_scheme);
+    let host = host.split('/').next().unwrap_or(host);
+    host != "localhost" && host != "127.0.0.1"
+}
+
 /// Find a script in the monorepo by walking up from the executable.
 fn find_repo_script(relative_path: &str) -> PathBuf {
     if let Ok(exe) = std::env::current_exe() {
@@ -226,6 +238,8 @@ pub async fn start_worker(
         .ok_or("Node.js not found. Install Node.js (https://nodejs.org) and restart the app.")?;
 
     let nats_addr = nats_url.unwrap_or_else(|| "nats://localhost:4222".to_string());
+    let nats_is_remote = is_remote_url(&nats_addr);
+    let orch_is_remote = is_remote_url(&orchestrator_url);
     let mut messages: Vec<String> = Vec::new();
 
     // Clear log buffer on fresh start
@@ -241,9 +255,13 @@ pub async fn start_worker(
     });
 
     // --- 1. Ensure NATS is running ---
-    if !is_port_open(4222) && !is_alive(&mut state.nats) {
+    if nats_is_remote {
+        messages.push(format!("Using remote NATS at {}", nats_addr));
+    } else if !is_port_open(4222) && !is_alive(&mut state.nats) {
         if let Some(nats_bin) = find_binary("nats-server") {
             let child = Command::new(&nats_bin)
+                .arg("-a")
+                .arg("0.0.0.0")
                 .arg("-p")
                 .arg("4222")
                 .stdout(Stdio::null())
@@ -268,7 +286,9 @@ pub async fn start_worker(
     }
 
     // --- 2. Ensure Orchestrator is running ---
-    if !is_port_open(3000) && !is_alive(&mut state.orchestrator) {
+    if orch_is_remote {
+        messages.push(format!("Using remote orchestrator at {}", orchestrator_url));
+    } else if !is_port_open(3000) && !is_alive(&mut state.orchestrator) {
         let orch_script = find_repo_script("services/orchestrator/dist/index.js");
         if orch_script.exists() {
             let orch_dir = orch_script
