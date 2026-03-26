@@ -14,6 +14,7 @@ interface CompletedJob {
 export default function WorkerHome() {
   const { status, loading, error, startWorker, stopWorker } = useWorkerDaemon();
   const orchestratorUrl = localStorage.getItem('fusio_orchestrator_url') || 'http://localhost:3000';
+  const [detectedIp, setDetectedIp] = useState('');
   const [completedJobs, setCompletedJobs] = useState<CompletedJob[]>([]);
   const [earnings, setEarnings] = useState({ today: 0, week: 0, allTime: 0 });
   const [showConsole, setShowConsole] = useState(false);
@@ -21,6 +22,18 @@ export default function WorkerHome() {
   const logsEndRef = useRef<HTMLDivElement>(null);
   const logsContainerRef = useRef<HTMLDivElement>(null);
   const [depsReady, setDepsReady] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        if (window.__TAURI_INTERNALS__) {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const ip = await invoke<string>('get_local_ip_address');
+          setDetectedIp(ip);
+        }
+      } catch { /* ignore */ }
+    })();
+  }, []);
 
   // Poll logs when console is open
   useEffect(() => {
@@ -274,6 +287,12 @@ export default function WorkerHome() {
                 </span>
               </p>
             </div>
+            {detectedIp && detectedIp !== '127.0.0.1' && (
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wider">LAN IP</p>
+                <p className="text-sm font-mono text-slate-200 mt-1">{detectedIp}</p>
+              </div>
+            )}
           </div>
         )}
       </div>

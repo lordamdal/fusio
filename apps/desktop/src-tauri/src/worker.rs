@@ -205,6 +205,11 @@ fn get_local_ip() -> String {
         .unwrap_or_else(|_| "127.0.0.1".to_string())
 }
 
+#[tauri::command]
+pub fn get_local_ip_address() -> String {
+    get_local_ip()
+}
+
 fn is_port_open(port: u16) -> bool {
     std::net::TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok()
 }

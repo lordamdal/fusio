@@ -13,6 +13,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             get_app_version,
+            worker::get_local_ip_address,
             worker::ensure_services,
             worker::start_worker,
             worker::stop_worker,

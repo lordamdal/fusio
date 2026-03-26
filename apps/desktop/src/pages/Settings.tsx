@@ -9,6 +9,7 @@ export default function Settings() {
   const [ramLimit, setRamLimit] = useState(50);
   const [saved, setSaved] = useState(false);
   const [appVersion, setAppVersion] = useState('0.1.0');
+  const [detectedIp, setDetectedIp] = useState('');
   const { wallet, generateKeypair } = useWallet();
 
   useEffect(() => {
@@ -18,16 +19,17 @@ export default function Settings() {
     setCpuLimit(parseInt(localStorage.getItem('fusio_cpu_limit') ?? '50'));
     setRamLimit(parseInt(localStorage.getItem('fusio_ram_limit') ?? '50'));
 
-    // Fetch version from Tauri
     (async () => {
       try {
         if (window.__TAURI_INTERNALS__) {
           const { invoke } = await import('@tauri-apps/api/core');
           const v = await invoke<string>('get_app_version');
           setAppVersion(v);
+          const ip = await invoke<string>('get_local_ip_address');
+          setDetectedIp(ip);
         }
       } catch {
-        // Keep default
+        // Keep defaults
       }
     })();
   }, []);
@@ -62,6 +64,30 @@ export default function Settings() {
         </div>
       )}
 
+      {/* This Device */}
+      {detectedIp && detectedIp !== '127.0.0.1' && (
+        <div className="bg-cyan-400/5 border border-cyan-400/20 rounded-xl p-6 space-y-3">
+          <h3 className="text-sm font-semibold text-cyan-400 uppercase tracking-wider">This Device</h3>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-slate-400">LAN IP:</span>
+            <code className="text-sm font-mono text-slate-50 bg-slate-800 px-3 py-1 rounded">{detectedIp}</code>
+          </div>
+          <div className="mt-3 bg-slate-900/50 rounded-lg p-4 space-y-2">
+            <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">To connect another device to this machine, use:</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="text-[10px] text-slate-500">Orchestrator URL</p>
+                <code className="text-xs font-mono text-cyan-400">{`http://${detectedIp}:3000`}</code>
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-500">NATS URL</p>
+                <code className="text-xs font-mono text-cyan-400">{`nats://${detectedIp}:4222`}</code>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Network Config */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
         <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Network</h3>
@@ -89,7 +115,7 @@ export default function Settings() {
             type="text"
             value={localIp}
             onChange={(e) => setLocalIp(e.target.value)}
-            placeholder="Auto-detect (leave empty)"
+            placeholder={detectedIp ? `Auto-detected: ${detectedIp}` : 'Auto-detect (leave empty)'}
             className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-50 font-mono text-sm placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400"
           />
           <p className="text-xs text-slate-500 mt-1">Your LAN IP for cross-machine communication. Leave empty to auto-detect.</p>
