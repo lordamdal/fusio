@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useWorkerDaemon } from '../hooks/useWorkerDaemon';
 import EarningsWidget from '../components/EarningsWidget';
+import DependencyPanel from '../components/DependencyPanel';
 
 interface CompletedJob {
   id: string;
@@ -18,6 +19,7 @@ export default function WorkerHome() {
   const [showConsole, setShowConsole] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const [depsReady, setDepsReady] = useState(false);
 
   // Poll logs when console is open
   useEffect(() => {
@@ -169,6 +171,9 @@ export default function WorkerHome() {
         </div>
       )}
 
+      {/* System Requirements */}
+      <DependencyPanel onAllReady={setDepsReady} />
+
       {/* Worker Card */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
         <div className="flex items-center justify-between">
@@ -198,10 +203,12 @@ export default function WorkerHome() {
 
           <button
             onClick={handleToggle}
-            disabled={loading}
+            disabled={loading || (!depsReady && !status.running)}
+            title={!depsReady && !status.running ? 'Install all dependencies first' : undefined}
             className={`relative w-14 h-7 rounded-full transition-colors ${
               loading ? 'bg-amber-400 animate-pulse' :
-              status.running ? 'bg-emerald-400' : 'bg-slate-700'
+              status.running ? 'bg-emerald-400' :
+              !depsReady ? 'bg-slate-800 opacity-40 cursor-not-allowed' : 'bg-slate-700'
             }`}
           >
             <div className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow-md transition-transform ${

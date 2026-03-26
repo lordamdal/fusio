@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '../hooks/useWallet';
+import DependencyPanel from '../components/DependencyPanel';
 
 type Role = 'requester' | 'worker' | null;
 
@@ -9,6 +10,7 @@ export default function Onboarding() {
   const [role, setRole] = useState<Role>(null);
   const [apiKey, setApiKey] = useState('');
   const [walletGenerated, setWalletGenerated] = useState(false);
+  const [workerDepsReady, setWorkerDepsReady] = useState(false);
   const navigate = useNavigate();
   const { generateKeypair } = useWallet();
 
@@ -151,20 +153,7 @@ export default function Onboarding() {
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="bg-slate-800 border border-slate-700/50 rounded-xl p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-300">Platform</span>
-                    <span className="text-sm font-mono text-cyan-400">macOS (Apple Silicon)</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-300">Docker Required</span>
-                    <span className="text-sm font-mono text-cyan-400">Yes</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-300">Browser Container</span>
-                    <span className="text-sm font-mono text-cyan-400">fusio-browser:latest</span>
-                  </div>
-                </div>
+                <DependencyPanel onAllReady={setWorkerDepsReady} />
               </div>
             )}
 
@@ -177,7 +166,8 @@ export default function Onboarding() {
               </button>
               <button
                 onClick={handleContinueToReady}
-                className="flex-1 px-6 py-2.5 rounded-lg bg-cyan-400 text-slate-950 text-sm font-semibold hover:bg-cyan-300 transition-colors"
+                disabled={role === 'worker' && !workerDepsReady}
+                className="flex-1 px-6 py-2.5 rounded-lg bg-cyan-400 text-slate-950 text-sm font-semibold hover:bg-cyan-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Continue
               </button>

@@ -1,5 +1,6 @@
 mod worker;
 mod keystore;
+mod deps;
 
 #[tauri::command]
 fn get_app_version() -> String {
@@ -18,6 +19,9 @@ pub fn run() {
             keystore::store_keypair,
             keystore::load_keypair,
             keystore::has_keypair,
+            deps::check_dependencies,
+            deps::install_dependency,
+            deps::open_docker_download,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Fusio");

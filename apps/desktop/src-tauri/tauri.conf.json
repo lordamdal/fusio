@@ -27,6 +27,11 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": [
+      "bin/node",
+      "bin/nats-server",
+      "docker/Dockerfile.browser"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

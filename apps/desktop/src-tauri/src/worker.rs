@@ -70,6 +70,28 @@ fn capture_output(child: &mut Child, label: &str) {
 
 /// Search common locations for a binary that macOS GUI apps can't find via PATH.
 fn find_binary(name: &str) -> Option<PathBuf> {
+    // 1. Bundled inside .app bundle: Fusio.app/Contents/Resources/bin/<name>
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(macos_dir) = exe.parent() {
+            let bundled = macos_dir
+                .parent()
+                .map(|contents| contents.join("Resources/bin").join(name));
+            if let Some(ref p) = bundled {
+                if p.exists() {
+                    // Remove macOS quarantine flag on bundled binaries
+                    let _ = Command::new("xattr")
+                        .args(["-dr", "com.apple.quarantine"])
+                        .arg(p)
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .output();
+                    return Some(p.clone());
+                }
+            }
+        }
+    }
+
+    // 2. System paths
     let search_dirs = [
         "/opt/homebrew/bin",
         "/usr/local/bin",

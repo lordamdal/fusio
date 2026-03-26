@@ -1,0 +1,6 @@
+FROM mcr.microsoft.com/playwright:v1.42.0-jammy
+
+WORKDIR /app
+
+# The container stays alive waiting for Playwright remote connection
+CMD ["node", "-e", "require('http').createServer((req, res) => { res.writeHead(200); res.end('ok'); }).listen(9222, () => console.log('Browser container ready on port 9222'))"]

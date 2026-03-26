@@ -3,3 +3,5 @@ node_modules/
 .env
 *.log
 dist/
+apps/desktop/src-tauri/bin/
+apps/desktop/src-tauri/target/
