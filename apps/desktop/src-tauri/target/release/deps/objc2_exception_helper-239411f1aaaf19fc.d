@@ -1,0 +1,7 @@
+/Users/lordamdal/Documents/fusio/fusio-space/fusio/apps/desktop/src-tauri/target/release/deps/objc2_exception_helper-239411f1aaaf19fc.d: /Users/lordamdal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/objc2-exception-helper-0.1.1/src/lib.rs
+
+/Users/lordamdal/Documents/fusio/fusio-space/fusio/apps/desktop/src-tauri/target/release/deps/libobjc2_exception_helper-239411f1aaaf19fc.rlib: /Users/lordamdal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/objc2-exception-helper-0.1.1/src/lib.rs
+
+/Users/lordamdal/Documents/fusio/fusio-space/fusio/apps/desktop/src-tauri/target/release/deps/libobjc2_exception_helper-239411f1aaaf19fc.rmeta: /Users/lordamdal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/objc2-exception-helper-0.1.1/src/lib.rs
+
+/Users/lordamdal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/objc2-exception-helper-0.1.1/src/lib.rs:
