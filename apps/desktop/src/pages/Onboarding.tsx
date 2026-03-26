@@ -1,18 +1,22 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '../hooks/useWallet';
+import { useWebSession } from '../hooks/useWebSession';
 import DependencyPanel from '../components/DependencyPanel';
 
 type Role = 'requester' | 'worker' | null;
+type CredentialMethod = 'apikey' | 'web-session';
 
 export default function Onboarding() {
   const [step, setStep] = useState(0);
   const [role, setRole] = useState<Role>(null);
   const [apiKey, setApiKey] = useState('');
+  const [credentialMethod, setCredentialMethod] = useState<CredentialMethod>('apikey');
   const [walletGenerated, setWalletGenerated] = useState(false);
   const [workerDepsReady, setWorkerDepsReady] = useState(false);
   const navigate = useNavigate();
   const { generateKeypair } = useWallet();
+  const { sessions, startLogin, loginInProgress } = useWebSession();
 
   const handleGetStarted = async () => {
     // Generate wallet if not already done
@@ -128,28 +132,102 @@ export default function Onboarding() {
           <div className="space-y-6">
             <div>
               <h2 className="text-2xl font-bold text-slate-50">
-                {role === 'requester' ? 'Connect Your API Key' : 'Configure Worker'}
+                {role === 'requester' ? 'Connect AI Provider' : 'Configure Worker'}
               </h2>
               <p className="text-slate-400 mt-2">
                 {role === 'requester'
-                  ? 'Enter your AI model API key to power agents on the network.'
+                  ? 'Connect an API key or log in with your existing subscription.'
                   : 'Your machine will run browser tasks and earn FUS tokens.'}
               </p>
             </div>
 
             {role === 'requester' ? (
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">API Key (optional)</label>
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="sk-..."
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-sm text-slate-50 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400"
-                  />
-                  <p className="text-xs text-slate-500 mt-2">Stored locally on your device. You can add this later in Credentials.</p>
+                {/* Method toggle */}
+                <div className="flex bg-slate-800 rounded-lg p-1">
+                  <button
+                    onClick={() => setCredentialMethod('apikey')}
+                    className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      credentialMethod === 'apikey'
+                        ? 'bg-slate-700 text-slate-50'
+                        : 'text-slate-400 hover:text-slate-300'
+                    }`}
+                  >
+                    API Key
+                  </button>
+                  <button
+                    onClick={() => setCredentialMethod('web-session')}
+                    className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      credentialMethod === 'web-session'
+                        ? 'bg-slate-700 text-slate-50'
+                        : 'text-slate-400 hover:text-slate-300'
+                    }`}
+                    title="Free with your existing subscription but slower and less reliable than API keys"
+                  >
+                    Web Login
+                  </button>
                 </div>
+
+                {credentialMethod === 'apikey' ? (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">API Key (optional)</label>
+                    <input
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder="sk-..."
+                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-sm text-slate-50 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400"
+                    />
+                    <p className="text-xs text-slate-500 mt-2">Stored locally on your device. You can add this later in Credentials.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-xs text-slate-400">
+                      Log in to your existing Claude or ChatGPT account. Free with your subscription but slower and less reliable than API keys.
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        onClick={() => startLogin('claude')}
+                        disabled={loginInProgress === 'claude'}
+                        className="px-4 py-3 rounded-lg border border-slate-700 bg-slate-800 text-sm text-slate-200 hover:border-orange-400/50 hover:bg-orange-400/5 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {loginInProgress === 'claude' ? (
+                          <>
+                            <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                            Connecting...
+                          </>
+                        ) : sessions.find(s => s.provider === 'claude' && s.status === 'active') ? (
+                          <><span className="w-2 h-2 rounded-full bg-emerald-400" /> Claude Connected</>
+                        ) : (
+                          'Log in to Claude'
+                        )}
+                      </button>
+                      <button
+                        onClick={() => startLogin('openai')}
+                        disabled={loginInProgress === 'openai'}
+                        className="px-4 py-3 rounded-lg border border-slate-700 bg-slate-800 text-sm text-slate-200 hover:border-emerald-400/50 hover:bg-emerald-400/5 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {loginInProgress === 'openai' ? (
+                          <>
+                            <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                            Connecting...
+                          </>
+                        ) : sessions.find(s => s.provider === 'openai' && s.status === 'active') ? (
+                          <><span className="w-2 h-2 rounded-full bg-emerald-400" /> ChatGPT Connected</>
+                        ) : (
+                          'Log in to ChatGPT'
+                        )}
+                      </button>
+                    </div>
+                    <p className="text-xs text-amber-400/70">Web sessions are slower (30-60s per response) and may violate provider ToS.</p>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="space-y-4">
@@ -166,7 +244,7 @@ export default function Onboarding() {
               </button>
               <button
                 onClick={handleContinueToReady}
-                disabled={role === 'worker' && !workerDepsReady}
+                disabled={false}
                 className="flex-1 px-6 py-2.5 rounded-lg bg-cyan-400 text-slate-950 text-sm font-semibold hover:bg-cyan-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Continue
@@ -203,7 +281,9 @@ export default function Onboarding() {
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                 <span className="text-sm text-slate-300">
                   {role === 'requester'
-                    ? apiKey ? 'API key configured' : 'API key skipped (add later)'
+                    ? credentialMethod === 'apikey'
+                      ? apiKey ? 'API key configured' : 'API key skipped (add later)'
+                      : sessions.some(s => s.status === 'active') ? 'Web session connected' : 'Web session skipped (add later)'
                     : 'Worker configured'}
                 </span>
               </div>

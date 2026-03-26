@@ -21,6 +21,7 @@ pub fn run() {
             keystore::has_keypair,
             deps::check_dependencies,
             deps::install_dependency,
+            deps::setup_all,
             deps::open_docker_download,
         ])
         .run(tauri::generate_context!())

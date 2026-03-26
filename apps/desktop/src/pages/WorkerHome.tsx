@@ -19,6 +19,7 @@ export default function WorkerHome() {
   const [showConsole, setShowConsole] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const logsContainerRef = useRef<HTMLDivElement>(null);
   const [depsReady, setDepsReady] = useState(false);
 
   // Poll logs when console is open
@@ -40,9 +41,14 @@ export default function WorkerHome() {
     return () => clearInterval(interval);
   }, [showConsole]);
 
-  // Auto-scroll logs
+  // Auto-scroll logs only if user is near the bottom
   useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = logsContainerRef.current;
+    if (!container) return;
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 60;
+    if (isNearBottom) {
+      logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [logs]);
 
   const fetchCompletedJobs = useCallback(async () => {
@@ -144,7 +150,7 @@ export default function WorkerHome() {
               )}
             </div>
           </div>
-          <div className="max-h-64 overflow-y-auto p-3 font-mono text-[11px] leading-relaxed scrollbar-thin">
+          <div ref={logsContainerRef} className="max-h-64 overflow-y-auto p-3 font-mono text-[11px] leading-relaxed scrollbar-thin">
             {logs.length === 0 ? (
               <p className="text-slate-600">No logs yet. Start the worker to see output.</p>
             ) : (

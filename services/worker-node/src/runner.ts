@@ -14,6 +14,8 @@ import * as container from './browser/container.js';
 import { connectBrowser, captureScreenshot, captureDomSummary, disconnectBrowser } from './browser/playwright.js';
 import { execute } from './browser/actions.js';
 import { buildAndSign } from './receipt.js';
+import { completeLLM, type CredentialSet, type LLMRequest, type LLMResponse, SessionExpiredError } from './llm/interface.js';
+import { closeProxyBrowser } from './llm/web-proxy.js';
 import { pino } from 'pino';
 
 const logger = pino({ name: 'worker-runner' });
@@ -22,11 +24,15 @@ const sc = StringCodec();
 export interface RunnerState {
   activeJobId: string | null;
   currentStep: number;
+  credentials: CredentialSet | null;
 }
+
+export { completeLLM, type LLMRequest, type LLMResponse };
 
 export const state: RunnerState = {
   activeJobId: null,
   currentStep: 0,
+  credentials: null,
 };
 
 export async function handleJob(
@@ -111,14 +117,24 @@ export async function handleJob(
 
     logger.info({ jobId, actionCount, outcome: 'completed' }, 'Job complete');
   } catch (err) {
-    logger.error({ jobId, err: (err as Error).message, stack: (err as Error).stack }, 'Job failed');
+    const error = err as Error;
+    const faultClass = error instanceof SessionExpiredError ? 'session_expired' : 'worker_fault';
+    logger.error({ jobId, err: error.message, stack: error.stack, faultClass }, 'Job failed');
+
+    // Notify desktop app if session expired so user can re-login
+    if (error instanceof SessionExpiredError) {
+      nc.publish(
+        `fusio.session.expired.${manifest.agentId}`,
+        sc.encode(JSON.stringify({ jobId, error: error.message, timestamp: Date.now() }))
+      );
+    }
 
     nc.publish(
       SUBJECTS.JOB_FAILED(jobId),
       sc.encode(JSON.stringify({
         jobId,
-        error: (err as Error).message,
-        faultClass: 'worker_fault',
+        error: error.message,
+        faultClass,
         timestamp: Date.now(),
       }))
     );
@@ -132,7 +148,9 @@ export async function handleJob(
     if (browser) await disconnectBrowser(browser);
     if (actionSub) actionSub.unsubscribe();
     if (cancelSub) cancelSub.unsubscribe();
+    await closeProxyBrowser();
     state.activeJobId = null;
     state.currentStep = 0;
+    state.credentials = null;
   }
 }

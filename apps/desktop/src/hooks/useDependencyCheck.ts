@@ -67,15 +67,21 @@ export function useDependencyCheck() {
     }
   }, []);
 
+  const [installError, setInstallError] = useState<string | null>(null);
+
   const installDep = useCallback(async (depName: string) => {
     if (!window.__TAURI_INTERNALS__) return;
     setInstalling(depName);
+    setInstallError(null);
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('install_dependency', { depName });
-      await checkDeps(); // Refresh status after install
+      const msg = await invoke<string>('install_dependency', { depName });
+      console.log('[fusio]', msg);
+      await checkDeps();
     } catch (err) {
-      console.error('[fusio] Install failed:', err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error('[fusio] Install failed:', errMsg);
+      setInstallError(`${depName}: ${errMsg}`);
     } finally {
       setInstalling(null);
     }
@@ -87,15 +93,47 @@ export function useDependencyCheck() {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('open_docker_download');
     } catch {
-      // fallback
       window.open('https://www.docker.com/products/docker-desktop/', '_blank');
     }
   }, []);
+
+  const setupAll = useCallback(async () => {
+    if (!window.__TAURI_INTERNALS__) return;
+    setInstalling('all');
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const msg = await invoke<string>('setup_all');
+      console.log('[fusio] Setup complete:', msg);
+      await checkDeps();
+    } catch (err) {
+      console.error('[fusio] Setup failed:', err);
+    } finally {
+      setInstalling(null);
+    }
+  }, [checkDeps]);
 
   // Check on mount
   useEffect(() => {
     checkDeps();
   }, [checkDeps]);
+
+  // Auto-build Docker image when Docker is ready but image is missing
+  const autoBuildTriggered = useRef(false);
+  useEffect(() => {
+    if (
+      status.docker.installed &&
+      !status.dockerImage.installed &&
+      !autoBuildTriggered.current &&
+      installing === null
+    ) {
+      autoBuildTriggered.current = true;
+      installDep('docker_image');
+    }
+    // Reset trigger if Docker goes away
+    if (!status.docker.installed) {
+      autoBuildTriggered.current = false;
+    }
+  }, [status.docker.installed, status.dockerImage.installed, installing, installDep]);
 
   // Poll every 5s while not all ready (catches Docker Desktop being launched)
   useEffect(() => {
@@ -112,5 +150,5 @@ export function useDependencyCheck() {
     }
   }, [status.allReady, checkDeps]);
 
-  return { status, checking, installing, checkDeps, installDep, openDockerDownload };
+  return { status, checking, installing, installError, checkDeps, installDep, openDockerDownload, setupAll };
 }

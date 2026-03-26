@@ -243,7 +243,8 @@ pub async fn check_dependencies() -> Result<DependencyStatus, String> {
         },
     };
 
-    let all_ready = node.installed && nats.installed && docker.installed && docker_image.installed;
+    // Worker can start with just Node + NATS. Docker is only needed when a job arrives.
+    let all_ready = node.installed && nats.installed;
 
     Ok(DependencyStatus {
         node,
@@ -254,52 +255,103 @@ pub async fn check_dependencies() -> Result<DependencyStatus, String> {
     })
 }
 
+/// Install Homebrew if not present.
+fn ensure_homebrew() -> Result<PathBuf, String> {
+    if let Some(brew) = find_dep_binary("brew") {
+        return Ok(brew);
+    }
+    // Install Homebrew non-interactively
+    let output = Command::new("/bin/bash")
+        .args([
+            "-c",
+            "NONINTERACTIVE=1 /bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("Failed to install Homebrew: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Homebrew install failed: {}", stderr));
+    }
+
+    // Find the newly installed brew
+    find_dep_binary("brew")
+        .ok_or("Homebrew installed but binary not found. Restart the app.".to_string())
+}
+
+fn brew_install(formula: &str, is_cask: bool) -> Result<String, String> {
+    let brew = ensure_homebrew()?;
+    let mut args = vec!["install"];
+    if is_cask {
+        args.push("--cask");
+    }
+    args.push(formula);
+    let output = Command::new(&brew)
+        .args(&args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("Failed to run brew: {}", e))?;
+    if output.status.success() {
+        Ok(format!("{} installed successfully", formula))
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("brew install failed: {}", stderr))
+    }
+}
+
 #[tauri::command]
 pub async fn install_dependency(dep_name: String) -> Result<String, String> {
     match dep_name.as_str() {
-        "node" => {
+        "node" => brew_install("node@22", false),
+        "nats" => brew_install("nats-server", false),
+        "docker" => {
+            // Try brew cask install first
             let brew = find_dep_binary("brew");
-            match brew {
-                Some(brew_bin) => {
-                    let output = Command::new(&brew_bin)
-                        .args(["install", "node@22"])
-                        .stdout(Stdio::piped())
-                        .stderr(Stdio::piped())
-                        .output()
-                        .map_err(|e| format!("Failed to run brew: {}", e))?;
-                    if output.status.success() {
-                        Ok("Node.js installed successfully".to_string())
-                    } else {
-                        let stderr = String::from_utf8_lossy(&output.stderr);
-                        Err(format!("brew install failed: {}", stderr))
+            if let Some(brew_bin) = brew {
+                let output = Command::new(&brew_bin)
+                    .args(["install", "--cask", "docker"])
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .output()
+                    .map_err(|e| format!("Failed to run brew: {}", e))?;
+                if output.status.success() {
+                    // Launch Docker Desktop after install
+                    let _ = Command::new("open")
+                        .arg("-a")
+                        .arg("Docker")
+                        .spawn();
+                    // Wait for Docker daemon to start (up to 30s)
+                    for _ in 0..15 {
+                        std::thread::sleep(std::time::Duration::from_secs(2));
+                        if let Some(docker_bin) = find_dep_binary("docker") {
+                            if docker_daemon_running(&docker_bin) {
+                                return Ok("Docker Desktop installed and running".to_string());
+                            }
+                        }
                     }
+                    return Ok("Docker Desktop installed. It may take a moment to start.".to_string());
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    return Err(format!("brew install failed: {}. Download manually from docker.com", stderr));
                 }
-                None => Err("Homebrew not found. Install Node.js manually from https://nodejs.org".to_string()),
             }
-        }
-        "nats" => {
-            let brew = find_dep_binary("brew");
-            match brew {
-                Some(brew_bin) => {
-                    let output = Command::new(&brew_bin)
-                        .args(["install", "nats-server"])
-                        .stdout(Stdio::piped())
-                        .stderr(Stdio::piped())
-                        .output()
-                        .map_err(|e| format!("Failed to run brew: {}", e))?;
-                    if output.status.success() {
-                        Ok("NATS server installed successfully".to_string())
-                    } else {
-                        let stderr = String::from_utf8_lossy(&output.stderr);
-                        Err(format!("brew install failed: {}", stderr))
-                    }
-                }
-                None => Err("Homebrew not found. Install NATS manually: https://nats.io/download/".to_string()),
-            }
+            Err("Homebrew not found. Download Docker Desktop from https://www.docker.com/products/docker-desktop/".to_string())
         }
         "docker_image" => {
             let docker_bin = find_dep_binary("docker")
                 .ok_or("Docker not found. Install Docker Desktop first.")?;
+
+            if !docker_daemon_running(&docker_bin) {
+                // Try launching Docker Desktop
+                let _ = Command::new("open").arg("-a").arg("Docker").spawn();
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                if !docker_daemon_running(&docker_bin) {
+                    return Err("Docker daemon not running. Please launch Docker Desktop and wait for it to start.".to_string());
+                }
+            }
 
             let dockerfile = find_dockerfile()
                 .ok_or("Dockerfile.browser not found in app bundle or repository.")?;
@@ -308,6 +360,7 @@ pub async fn install_dependency(dep_name: String) -> Result<String, String> {
                 .ok_or("Cannot determine Dockerfile directory")?;
 
             let output = Command::new(&docker_bin)
+                .env("DOCKER_BUILDKIT", "0")
                 .args([
                     "build",
                     "-t", "fusio-browser:latest",
@@ -328,6 +381,106 @@ pub async fn install_dependency(dep_name: String) -> Result<String, String> {
         }
         _ => Err(format!("Unknown dependency: {}", dep_name)),
     }
+}
+
+/// One-click setup: install all missing dependencies in sequence.
+#[tauri::command]
+pub async fn setup_all() -> Result<String, String> {
+    let mut steps: Vec<String> = Vec::new();
+
+    // 1. Node (skip if bundled)
+    if find_dep_binary("node").is_none() {
+        match brew_install("node@22", false) {
+            Ok(msg) => steps.push(msg),
+            Err(e) => return Err(format!("Node.js install failed: {}", e)),
+        }
+    } else {
+        steps.push("Node.js: ready".to_string());
+    }
+
+    // 2. NATS (skip if bundled)
+    if find_dep_binary("nats-server").is_none() {
+        match brew_install("nats-server", false) {
+            Ok(msg) => steps.push(msg),
+            Err(e) => return Err(format!("NATS install failed: {}", e)),
+        }
+    } else {
+        steps.push("NATS: ready".to_string());
+    }
+
+    // 3. Docker
+    let docker_bin = find_dep_binary("docker");
+    let docker_ok = docker_bin.as_ref().map(|b| docker_daemon_running(b)).unwrap_or(false);
+    if !docker_ok {
+        if docker_bin.is_none() {
+            // Install Docker via brew (installs brew first if needed)
+            let brew_bin = ensure_homebrew()?;
+            let output = Command::new(&brew_bin)
+                .args(["install", "--cask", "docker"])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .output()
+                .map_err(|e| format!("Failed to run brew: {}", e))?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(format!("Docker install failed: {}", stderr));
+            }
+        }
+        // Launch Docker Desktop
+        let _ = Command::new("open").arg("-a").arg("Docker").spawn();
+        steps.push("Docker Desktop: launching...".to_string());
+
+        // Wait for daemon (up to 60s for first launch)
+        let mut daemon_started = false;
+        for _ in 0..30 {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            if let Some(ref db) = find_dep_binary("docker") {
+                if docker_daemon_running(db) {
+                    daemon_started = true;
+                    break;
+                }
+            }
+        }
+        if !daemon_started {
+            return Err("Docker Desktop installed but daemon didn't start within 60s. Launch it manually and retry.".to_string());
+        }
+        steps.push("Docker Desktop: running".to_string());
+    } else {
+        steps.push("Docker: ready".to_string());
+    }
+
+    // 4. Docker image
+    let docker_bin = find_dep_binary("docker")
+        .ok_or("Docker not available after install")?;
+    if !docker_image_exists(&docker_bin, "fusio-browser:latest") {
+        let dockerfile = find_dockerfile()
+            .ok_or("Dockerfile.browser not found")?;
+        let dockerfile_dir = dockerfile.parent()
+            .ok_or("Cannot determine Dockerfile directory")?;
+
+        let output = Command::new(&docker_bin)
+            .args([
+                "build",
+                "-t", "fusio-browser:latest",
+                "-f", &dockerfile.display().to_string(),
+                &dockerfile_dir.display().to_string(),
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .map_err(|e| format!("Docker build failed: {}", e))?;
+
+        if output.status.success() {
+            steps.push("Browser image: built".to_string());
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("Docker image build failed: {}", stderr));
+        }
+    } else {
+        steps.push("Browser image: ready".to_string());
+    }
+
+    Ok(steps.join("; "))
 }
 
 #[tauri::command]

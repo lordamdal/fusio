@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useWebSession, type WebSessionProvider } from '../hooks/useWebSession';
 
 interface Credential {
   id: string;
@@ -27,6 +28,8 @@ export default function Credentials() {
   const [showForm, setShowForm] = useState(false);
   const [newService, setNewService] = useState('');
   const [newKey, setNewKey] = useState('');
+  const [showWarning, setShowWarning] = useState(false);
+  const { sessions, loginInProgress, error: webSessionError, startLogin, removeSession, refreshSession, getSession } = useWebSession();
 
   useEffect(() => {
     setCredentials(loadCredentials());
@@ -155,10 +158,140 @@ export default function Credentials() {
         )}
       </div>
 
+      {/* Connect Web Account Section */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-50">Web Account Sessions</h2>
+            <p className="text-sm text-slate-400 mt-1">Use your existing Claude or ChatGPT subscription</p>
+          </div>
+        </div>
+
+        {/* Warning banner */}
+        <div className="bg-amber-400/5 border border-amber-400/20 rounded-xl p-4">
+          <button
+            onClick={() => setShowWarning(!showWarning)}
+            className="w-full flex items-center justify-between text-left"
+          >
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+              <span className="text-sm font-medium text-amber-400">Your subscription is cheaper, but...</span>
+            </div>
+            <svg className={`w-4 h-4 text-amber-400 transition-transform ${showWarning ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {showWarning && (
+            <div className="mt-3 text-xs text-slate-400 space-y-2">
+              <p>Web session proxy is <strong className="text-slate-300">10-100x slower</strong> than API calls (30-60s per response vs instant).</p>
+              <p>Sessions may <strong className="text-slate-300">break when providers update their UI</strong> and may violate provider Terms of Service. Your account could be restricted.</p>
+              <p><strong className="text-slate-300">API keys are recommended</strong> for production use.</p>
+            </div>
+          )}
+        </div>
+
+        {webSessionError && (
+          <div className="bg-red-400/5 border border-red-400/20 rounded-xl p-3">
+            <p className="text-sm text-red-400">{webSessionError}</p>
+          </div>
+        )}
+
+        {/* Provider cards */}
+        <div className="grid grid-cols-2 gap-4">
+          {(['claude', 'openai'] as WebSessionProvider[]).map((provider) => {
+            const session = getSession(provider);
+            const isLoggingIn = loginInProgress === provider;
+            const providerName = provider === 'claude' ? 'Claude' : 'ChatGPT';
+            const providerColor = provider === 'claude' ? 'text-orange-400' : 'text-emerald-400';
+            const providerBg = provider === 'claude' ? 'bg-orange-400/10' : 'bg-emerald-400/10';
+
+            return (
+              <div key={provider} className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-lg ${providerBg} flex items-center justify-center`}>
+                    <span className={`text-lg font-bold ${providerColor}`}>{providerName[0]}</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-slate-200">{providerName}</p>
+                    {session?.status === 'active' && (
+                      <p className="text-xs text-emerald-400">Connected</p>
+                    )}
+                    {session?.status === 'expired' && (
+                      <p className="text-xs text-amber-400">Session expired</p>
+                    )}
+                    {(!session || session.status === 'none') && (
+                      <p className="text-xs text-slate-500">Not connected</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Status-specific warnings */}
+                {session?.status === 'active' && (
+                  <p className="text-xs text-slate-500">Responses may take 30-60s vs instant with API keys</p>
+                )}
+                {session?.status === 'expired' && (
+                  <p className="text-xs text-amber-400/80">Log in again to continue using your subscription</p>
+                )}
+
+                <div className="flex gap-2">
+                  {(!session || session.status === 'none' || session.status === 'expired') ? (
+                    <button
+                      onClick={() => startLogin(provider)}
+                      disabled={isLoggingIn}
+                      className="flex-1 px-3 py-2 rounded-lg bg-cyan-400 text-slate-950 text-xs font-semibold hover:bg-cyan-300 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                      title="Use your existing subscription instead of paying for API access. Cheaper but slower and less reliable."
+                    >
+                      {isLoggingIn ? (
+                        <>
+                          <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                          Logging in...
+                        </>
+                      ) : (
+                        session?.status === 'expired' ? 'Reconnect' : 'Log In'
+                      )}
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => refreshSession(provider)}
+                        className="flex-1 px-3 py-2 rounded-lg border border-slate-700 text-xs text-slate-300 hover:bg-slate-800 transition-colors"
+                      >
+                        Refresh Session
+                      </button>
+                      <button
+                        onClick={() => removeSession(provider)}
+                        className="px-3 py-2 rounded-lg hover:bg-red-400/10 text-slate-500 hover:text-red-400 transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {session?.capturedAt && (
+                  <p className="text-xs text-slate-600">
+                    Connected {new Date(session.capturedAt).toLocaleDateString()}
+                    {session.expiresAt && ` · Expires ${new Date(session.expiresAt).toLocaleDateString()}`}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
         <p className="text-xs text-slate-500">
           API keys are stored locally on your device and are never transmitted to Fusio servers.
           In production, keys are injected into worker VMs via scoped proxy tokens from the Vault.
+          Web sessions are stored securely and used to proxy requests through the provider's web interface.
         </p>
       </div>
     </div>

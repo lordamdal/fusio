@@ -3,6 +3,7 @@ import { pino } from "pino";
 import type { VaultClient } from "../client.js";
 import { validateApiKey } from "./apikey.js";
 import { registerOAuthRoutes } from "./oauth.js";
+import { registerWebSessionRoutes } from "./web-session.js";
 import { registerHealthRoute } from "../health.js";
 
 const logger = pino({ level: process.env.LOG_LEVEL ?? "info", name: "front-desk" });
@@ -15,6 +16,9 @@ export async function buildFrontDesk(client: VaultClient) {
 
   // OAuth routes
   registerOAuthRoutes(app, client);
+
+  // Web session routes (browser login proxy)
+  registerWebSessionRoutes(app, client);
 
   // POST /credentials/apikey - Store API key after validation
   app.post("/credentials/apikey", async (req, reply) => {
@@ -81,8 +85,6 @@ export async function buildFrontDesk(client: VaultClient) {
   // Hook: update registry on apikey store
   app.addHook("onResponse", async (req) => {
     if (req.method === "POST" && req.url === "/credentials/apikey" && req.raw.statusCode === 201) {
-      // This is best-effort; the main handler already stored the key.
-      // We try to update the service registry.
       try {
         const { agentId, service } = req.body as { agentId: string; service: string };
         const registry = (await client.readSecret(`agents/${agentId}/_registry`)) ?? {};

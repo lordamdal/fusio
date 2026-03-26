@@ -27,10 +27,19 @@ export async function issueJobToken(
   if (!client) throw new Error("Token module not initialized: call initTokens first");
 
   // Copy agent credentials to job-scoped path
+  // Include both API keys and web sessions
+  const webSessionSuffixes = ['-web-session'];
   for (const service of requiredServices) {
     const creds = await client.readSecret(`agents/${agentId}/${service}`);
     if (creds) {
       await client.writeSecret(`jobs/${jobId}/${service}`, creds);
+    }
+    // Also check for web session credentials for this provider
+    for (const suffix of webSessionSuffixes) {
+      const webCreds = await client.readSecret(`agents/${agentId}/${service}${suffix}`);
+      if (webCreds) {
+        await client.writeSecret(`jobs/${jobId}/${service}${suffix}`, webCreds);
+      }
     }
   }
 
