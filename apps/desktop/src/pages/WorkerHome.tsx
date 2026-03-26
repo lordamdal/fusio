@@ -1,7 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useWorkerDaemon } from '../hooks/useWorkerDaemon';
 import EarningsWidget from '../components/EarningsWidget';
-import StatusBadge from '../components/StatusBadge';
 
 interface CompletedJob {
   id: string;
@@ -16,6 +15,33 @@ export default function WorkerHome() {
   const orchestratorUrl = localStorage.getItem('fusio_orchestrator_url') || 'http://localhost:3000';
   const [completedJobs, setCompletedJobs] = useState<CompletedJob[]>([]);
   const [earnings, setEarnings] = useState({ today: 0, week: 0, allTime: 0 });
+  const [showConsole, setShowConsole] = useState(false);
+  const [logs, setLogs] = useState<string[]>([]);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+
+  // Poll logs when console is open
+  useEffect(() => {
+    if (!showConsole) return;
+    const fetchLogs = async () => {
+      try {
+        if (window.__TAURI_INTERNALS__) {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const lines = await invoke<string[]>('get_worker_logs');
+          setLogs(lines);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 2000);
+    return () => clearInterval(interval);
+  }, [showConsole]);
+
+  // Auto-scroll logs
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs]);
 
   const fetchCompletedJobs = useCallback(async () => {
     try {
@@ -46,7 +72,6 @@ export default function WorkerHome() {
 
       setCompletedJobs(completed);
 
-      // Compute earnings
       const now = Date.now();
       const oneDayAgo = now - 86400000;
       const oneWeekAgo = now - 604800000;
@@ -61,7 +86,7 @@ export default function WorkerHome() {
       }
       setEarnings({ today, week, allTime });
     } catch {
-      // Orchestrator not reachable — keep current state
+      // Orchestrator not reachable
     }
   }, [orchestratorUrl]);
 
@@ -81,11 +106,70 @@ export default function WorkerHome() {
 
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-50">Worker Node</h1>
-        <p className="text-sm text-slate-400 mt-1">Earn FUS by running browser automation tasks</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-50">Worker Node</h1>
+          <p className="text-sm text-slate-400 mt-1">Earn FUS by running browser automation tasks</p>
+        </div>
+        <button
+          onClick={() => setShowConsole(!showConsole)}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            showConsole
+              ? 'bg-cyan-400/10 text-cyan-400 border border-cyan-400/30'
+              : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-slate-200'
+          }`}
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          Console
+          {logs.length > 0 && (
+            <span className="bg-slate-700 text-slate-300 rounded-full px-1.5 py-0.5 text-[10px]">
+              {logs.length}
+            </span>
+          )}
+        </button>
       </div>
 
+      {/* Console Panel */}
+      {showConsole && (
+        <div className="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2 bg-slate-900 border-b border-slate-800">
+            <span className="text-xs text-slate-400 font-mono">Service Logs</span>
+            <div className="flex items-center gap-2">
+              {logs.length > 0 && (
+                <span className="text-[10px] text-slate-600">{logs.length} lines</span>
+              )}
+            </div>
+          </div>
+          <div className="max-h-64 overflow-y-auto p-3 font-mono text-[11px] leading-relaxed scrollbar-thin">
+            {logs.length === 0 ? (
+              <p className="text-slate-600">No logs yet. Start the worker to see output.</p>
+            ) : (
+              logs.map((line, i) => {
+                let color = 'text-slate-400';
+                if (line.includes('/err]') || line.includes('error') || line.includes('Fatal') || line.includes('failed')) {
+                  color = 'text-red-400';
+                } else if (line.includes('Connected') || line.includes('Registered') || line.includes('ready') || line.includes('Ready')) {
+                  color = 'text-emerald-400';
+                } else if (line.includes('[cleanup]') || line.includes('[system]')) {
+                  color = 'text-amber-400';
+                } else if (line.includes('Started')) {
+                  color = 'text-cyan-400';
+                }
+                return (
+                  <div key={i} className={`${color} whitespace-pre-wrap break-all`}>
+                    {line}
+                  </div>
+                );
+              })
+            )}
+            <div ref={logsEndRef} />
+          </div>
+        </div>
+      )}
+
+      {/* Worker Card */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -101,11 +185,13 @@ export default function WorkerHome() {
                 {status.running ? 'Worker Active' : 'Worker Idle'}
               </h3>
               <p className="text-sm text-slate-400">
-                {status.running
-                  ? status.activeJob
-                    ? `Processing job ${status.activeJob.slice(0, 8)}...`
-                    : 'Ready — listening for jobs on the network'
-                  : 'Toggle to start accepting jobs'}
+                {loading
+                  ? 'Starting services...'
+                  : status.running
+                    ? status.activeJob
+                      ? `Processing job ${status.activeJob.slice(0, 8)}...`
+                      : 'Ready — listening for jobs on the network'
+                    : 'Toggle to start accepting jobs'}
               </p>
             </div>
           </div>
@@ -114,11 +200,12 @@ export default function WorkerHome() {
             onClick={handleToggle}
             disabled={loading}
             className={`relative w-14 h-7 rounded-full transition-colors ${
+              loading ? 'bg-amber-400 animate-pulse' :
               status.running ? 'bg-emerald-400' : 'bg-slate-700'
             }`}
           >
             <div className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow-md transition-transform ${
-              status.running ? 'translate-x-7' : 'translate-x-0.5'
+              status.running || loading ? 'translate-x-7' : 'translate-x-0.5'
             }`} />
           </button>
         </div>
