@@ -144,10 +144,15 @@ fn find_repo_script(relative_path: &str) -> PathBuf {
             }
         }
     }
-    PathBuf::from(format!(
-        "/Users/lordamdal/Documents/fusio/fusio-space/fusio/{}",
-        relative_path
-    ))
+    // CARGO_MANIFEST_DIR points to apps/desktop/src-tauri at compile time;
+    // walk up three levels to reach the monorepo root.
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = manifest
+        .parent()
+        .and_then(|p| p.parent())
+        .and_then(|p| p.parent())
+        .unwrap_or(&manifest);
+    repo_root.join(relative_path)
 }
 
 fn is_alive(handle: &mut Option<ProcessHandle>) -> bool {
