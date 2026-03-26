@@ -21,7 +21,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://localhost:* ws://localhost:* https://fusio.space; img-src 'self' data:; style-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self'; connect-src 'self' http://localhost:* ws://localhost:* https://fusio.space https://claude.ai https://chat.openai.com https://chatgpt.com https://auth0.openai.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'"
     }
   },
   "bundle": {

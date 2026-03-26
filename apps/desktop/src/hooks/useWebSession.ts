@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 
 export type WebSessionProvider = 'claude' | 'openai';
 
@@ -43,117 +43,130 @@ function getSessionStatus(session: StoredSession): WebSession {
   };
 }
 
+interface CapturedSession {
+  provider: string;
+  cookies: string;
+  local_storage: string;
+  user_agent: string;
+  captured_at: string;
+}
+
 export function useWebSession() {
   const [sessions, setSessions] = useState<WebSession[]>(() => {
     return loadSessions().map(getSessionStatus);
   });
   const [loginInProgress, setLoginInProgress] = useState<WebSessionProvider | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
 
   const getSession = useCallback((provider: WebSessionProvider): WebSession | undefined => {
     return sessions.find((s) => s.provider === provider);
   }, [sessions]);
 
+  const storeSession = useCallback((provider: WebSessionProvider, captured: CapturedSession) => {
+    const now = new Date();
+    const expiryDays = provider === 'claude' ? 14 : 30;
+    const expiresAt = new Date(now.getTime() + expiryDays * 24 * 60 * 60 * 1000);
+
+    const session: StoredSession = {
+      provider,
+      cookies: captured.cookies,
+      localStorage: captured.local_storage || '{}',
+      userAgent: captured.user_agent || navigator.userAgent,
+      capturedAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    };
+
+    const existing = loadSessions().filter((s) => s.provider !== provider);
+    saveSessions([...existing, session]);
+    setSessions([...existing.map(getSessionStatus), getSessionStatus(session)]);
+
+    // Also store in Vault (best-effort)
+    const vaultUrl = localStorage.getItem('fusio_vault_url') || 'http://localhost:8201';
+    const walletId = localStorage.getItem('fusio_wallet')?.slice(0, 16) || 'local';
+    fetch(`${vaultUrl}/credentials/web-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agentId: walletId,
+        provider,
+        cookies: captured.cookies,
+        localStorage: captured.local_storage || '{}',
+        userAgent: captured.user_agent || navigator.userAgent,
+      }),
+    }).catch(() => { /* best-effort */ });
+  }, []);
+
+  const cleanup = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+
   const startLogin = useCallback(async (provider: WebSessionProvider) => {
     setLoginInProgress(provider);
     setError(null);
+    cleanup();
 
     try {
-      const loginUrl = provider === 'claude'
-        ? 'https://claude.ai/login'
-        : 'https://chat.openai.com/auth/login';
-
-      // Detect login completion URLs
-      const successPatterns = provider === 'claude'
-        ? ['claude.ai/new', 'claude.ai/chats', 'claude.ai/chat']
-        : ['chat.openai.com/c/', 'chat.openai.com/?', 'chatgpt.com'];
-
       if (window.__TAURI_INTERNALS__) {
-        // Tauri: open a webview window for login
-        const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+        // ---- Tauri Desktop: use Rust-backed login window ----
+        const { invoke } = await import('@tauri-apps/api/core');
 
-        const loginWindow = new WebviewWindow(`login-${provider}`, {
-          url: loginUrl,
-          title: `Log in to ${provider === 'claude' ? 'Claude' : 'ChatGPT'}`,
-          width: 1024,
-          height: 768,
-          center: true,
-        });
+        // Open the login window (Rust creates a webview with init scripts)
+        await invoke('open_login_window', { provider });
 
-        // Listen for navigation events to detect successful login
-        const unlisten = await loginWindow.onCloseRequested(async () => {
-          // Window closed by user — check if we got cookies
-          setLoginInProgress(null);
-          unlisten();
-        });
-
-        // Poll for URL changes (Tauri webview approach)
-        const pollInterval = setInterval(async () => {
+        // Poll for login completion via Rust command
+        pollRef.current = setInterval(async () => {
           try {
-            const { invoke } = await import('@tauri-apps/api/core');
-            const currentUrl = await invoke<string>('get_webview_url', { label: `login-${provider}` }).catch(() => '');
+            const result = await invoke<CapturedSession | null>('check_login_status', { provider });
 
-            if (currentUrl && successPatterns.some((p) => currentUrl.includes(p))) {
-              clearInterval(pollInterval);
-
-              // Extract cookies from webview
-              const cookies = await invoke<string>('get_webview_cookies', { label: `login-${provider}` }).catch(() => '[]');
-
-              const now = new Date();
-              const expiryDays = provider === 'claude' ? 14 : 30;
-              const expiresAt = new Date(now.getTime() + expiryDays * 24 * 60 * 60 * 1000);
-
-              const session: StoredSession = {
-                provider,
-                cookies,
-                localStorage: '{}',
-                userAgent: navigator.userAgent,
-                capturedAt: now.toISOString(),
-                expiresAt: expiresAt.toISOString(),
-              };
-
-              // Store locally
-              const existing = loadSessions().filter((s) => s.provider !== provider);
-              saveSessions([...existing, session]);
-              setSessions([...existing.map(getSessionStatus), getSessionStatus(session)]);
-
-              // Also store in Vault if orchestrator URL is available
-              const vaultUrl = localStorage.getItem('fusio_vault_url') || 'http://localhost:8201';
-              const walletId = localStorage.getItem('fusio_wallet')?.slice(0, 16) || 'local';
-              try {
-                await fetch(`${vaultUrl}/credentials/web-session`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    agentId: walletId,
-                    provider,
-                    cookies,
-                    localStorage: '{}',
-                    userAgent: navigator.userAgent,
-                  }),
-                });
-              } catch {
-                // Vault storage is best-effort in dev
-              }
-
+            if (result) {
+              // Login successful — session captured
+              cleanup();
+              storeSession(provider, result);
               setLoginInProgress(null);
-              loginWindow.close();
             }
-          } catch {
-            // polling error, continue
+          } catch (err: any) {
+            // If window was closed by user, check_login_status returns null
+            if (err?.toString()?.includes('not found')) {
+              cleanup();
+              setLoginInProgress(null);
+            }
           }
         }, 2000);
 
-        // Auto-cleanup after 5 minutes
-        setTimeout(() => {
-          clearInterval(pollInterval);
-          if (loginInProgress === provider) {
-            setLoginInProgress(null);
-            setError('Login timed out. Please try again.');
-          }
+        // Auto-timeout after 5 minutes
+        timeoutRef.current = setTimeout(async () => {
+          cleanup();
+          try {
+            const { invoke: inv } = await import('@tauri-apps/api/core');
+            await inv('close_login_window', { provider });
+          } catch { /* ignore */ }
+          setLoginInProgress(null);
+          setError('Login timed out. Please try again.');
         }, 5 * 60 * 1000);
+
       } else {
-        // Browser fallback: open in a popup window
+        // ---- Browser fallback: popup window ----
+        const loginUrl = provider === 'claude'
+          ? 'https://claude.ai/login'
+          : 'https://auth0.openai.com/u/login';
+
         const popup = window.open(loginUrl, `fusio-login-${provider}`, 'width=1024,height=768');
 
         if (!popup) {
@@ -162,64 +175,65 @@ export function useWebSession() {
           return;
         }
 
-        // Poll for popup URL changes
-        const pollInterval = setInterval(() => {
+        const successPatterns = provider === 'claude'
+          ? ['claude.ai/new', 'claude.ai/chat', 'claude.ai/recents']
+          : ['chat.openai.com', 'chatgpt.com'];
+
+        pollRef.current = setInterval(() => {
           try {
             if (popup.closed) {
-              clearInterval(pollInterval);
+              cleanup();
               setLoginInProgress(null);
               return;
             }
 
             const currentUrl = popup.location.href;
             if (currentUrl && successPatterns.some((p) => currentUrl.includes(p))) {
-              clearInterval(pollInterval);
+              cleanup();
 
-              // In browser context, we can't easily extract cookies from cross-origin popups.
-              // Store a placeholder session — the user will need to use API keys in browser mode.
-              const now = new Date();
-              const expiryDays = provider === 'claude' ? 14 : 30;
-              const expiresAt = new Date(now.getTime() + expiryDays * 24 * 60 * 60 * 1000);
-
-              const session: StoredSession = {
+              // Cross-origin: can't extract cookies from popup.
+              // Store with what we can access.
+              storeSession(provider, {
                 provider,
-                cookies: '[]',
-                localStorage: '{}',
-                userAgent: navigator.userAgent,
-                capturedAt: now.toISOString(),
-                expiresAt: expiresAt.toISOString(),
-              };
+                cookies: '',
+                local_storage: '{}',
+                user_agent: navigator.userAgent,
+                captured_at: new Date().toISOString(),
+              });
 
-              const existing = loadSessions().filter((s) => s.provider !== provider);
-              saveSessions([...existing, session]);
-              setSessions([...existing.map(getSessionStatus), getSessionStatus(session)]);
               setLoginInProgress(null);
               popup.close();
             }
           } catch {
-            // Cross-origin access blocked — expected until redirect completes
+            // Cross-origin access blocked — expected while on login domain
           }
         }, 2000);
 
-        setTimeout(() => {
-          clearInterval(pollInterval);
+        timeoutRef.current = setTimeout(() => {
+          cleanup();
           if (!popup.closed) popup.close();
-          if (loginInProgress === provider) {
-            setLoginInProgress(null);
-            setError('Login timed out. Please try again.');
-          }
+          setLoginInProgress(null);
+          setError('Login timed out. Please try again.');
         }, 5 * 60 * 1000);
       }
     } catch (err: any) {
-      setError(err.message || 'Login failed');
+      cleanup();
+      setError(err.message || 'Login failed. Check console for details.');
       setLoginInProgress(null);
     }
-  }, [loginInProgress]);
+  }, [cleanup, storeSession]);
 
-  const removeSession = useCallback((provider: WebSessionProvider) => {
+  const removeSession = useCallback(async (provider: WebSessionProvider) => {
     const updated = loadSessions().filter((s) => s.provider !== provider);
     saveSessions(updated);
     setSessions(updated.map(getSessionStatus));
+
+    // Also remove from Vault (best-effort)
+    const vaultUrl = localStorage.getItem('fusio_vault_url') || 'http://localhost:8201';
+    const walletId = localStorage.getItem('fusio_wallet')?.slice(0, 16) || 'local';
+    fetch(`${vaultUrl}/credentials/web-session/${walletId}/${provider}`, {
+      method: 'DELETE',
+    }).catch(() => { /* best-effort */ });
   }, []);
 
   const refreshSession = useCallback((provider: WebSessionProvider) => {
